@@ -89,6 +89,7 @@ go:	mov	ax,cs
 	mov	sp,#0x400		| arbitrary value >>512
 
     | AH设置int 0x10功能号 读取光标位置 位置行列都是0-based 行号返回到DH 列号返回到DL
+    | 这个地方读取光标坐标的用途是下面要输出字符串 输出字符串的光标就是现在获取到的
 	mov	ah,#0x03	| read cursor pos
 	| BH是int 0x10的参数 指定显示页 0表示使用默认的显示页
 	xor	bh,bh
