@@ -77,13 +77,20 @@ start:
 	movw
 	| 执行到这时Boot Segment代码已经被拷贝到了0x90000处了并且代码的复制功能已经执行完了 要跳到高地址地方继续执行
 	jmpi	go,INITSEG
+| 执行到这此时CS是0x9000
+| 初始化各个段寄存器ds es ss和sp
 go:	mov	ax,cs
 	mov	ds,ax
 	mov	es,ax
 	mov	ss,ax
+	| 栈基地址0x9000 栈顶指针0x400 这个地方规划栈空间预留了1024K的大小
+	| 栈指针增长方向是向低地址空间 入栈sp减小 出栈sp增加
+	| 从0x9000:0->0x9000:0x400地址空间就是栈空间
 	mov	sp,#0x400		| arbitrary value >>512
 
+    | AH设置int 0x10功能号 读取光标位置 位置行列都是0-based 行号返回到DH 列号返回到DL
 	mov	ah,#0x03	| read cursor pos
+	| BH是int 0x10的参数 指定显示页 0表示使用默认的显示页
 	xor	bh,bh
 	int	0x10
 	
