@@ -30,6 +30,7 @@
 | read errors will result in a unbreakable loop. Reboot by hand. It
 | loads pretty fast by getting whole sectors at a time whenever possible.
 
+| 启动盘总共有多少扇区内容
 | 1.44Mb disks:
 sectors = 18
 | 1.2Mb disks:
@@ -234,30 +235,51 @@ empty_8042:
 | just change the "sectors" variable at the start of the file
 | (originally 18, for a 1.44Mb drive)
 |
+| 启动盘第一个扇区内容就是当前代码 是由BIOS负责加载到内存的 也就是说当前程序执行的时候已经意味着有一个扇区内容加载完成了
 sread:	.word 1			| sectors read of current track
 head:	.word 0			| current head
 track:	.word 0			| current track
+
+| 函数read_it
+| 入参 ES
 read_it:
 	mov ax,es
+	| 参数校验 ES是入参0x1000 这行代码是保证地址4KB对齐 如果地址没有对齐就会陷入死循环
+	| 看看低12位 test不改变值 低12位按位与结果是0 ZF标志位就打上1
 	test ax,#0x0fff
+	| 一旦ZF是1 jne(jump not equals zero)就会生效进行跳转
 die:	jne die			| es must be at 64kB boundary
+    | bx清0 为什么要清0 下面会计算出启动盘总共要加载多少代码到内存
+    | 因为此时还在16位实模式下 也就是段空间最大就是(0xFFFF-0+1)个Byte 64KB
+    | 所以要保证加载的代码不要撑爆段空间
+    | 怎么判断呢 扇区代码量+0看看会不会进位
 	xor bx,bx		| bx is starting address within segment
 rp_read:
 	mov ax,es
 	cmp ax,#ENDSEG		| have we loaded all yet?
+	| jb指令 cmp比较ax<#ENDSEG就执行jb跳转
 	jb ok1_read
 	ret
 ok1_read:
+    | 总共sectors个扇区 已经加载了sread个扇区 还剩(sectors-sread)个扇区要加载
 	mov ax,#sectors
+	| AX中保存了要读多少个扇区
 	sub ax,sread
 	mov cx,ax
+	| 每个扇区512Byte 计算出还要加载多少字节
 	shl cx,#9
+	| 上面已经提前把bx置0了 这个地方相加 通过看CF位判断出是不是溢出进位了
 	add cx,bx
+	| 没有产生进位
 	jnc ok2_read
+	|
 	je ok2_read
 	xor ax,ax
 	sub ax,bx
 	shr ax,#9
+| 发起真正的读盘 把代码加载到内存
+| 入参 AX=要读多少个扇区
+|     CX=要读多少Byte内容
 ok2_read:
 	call read_track
 	mov cx,ax
@@ -282,6 +304,9 @@ ok3_read:
 	xor bx,bx
 	jmp rp_read
 
+| 发起真正的读盘行为
+| 入参 AX=要从磁盘读多少个扇区
+|     CX=要从磁盘读多少Byte内容
 read_track:
 	push ax
 	push bx
