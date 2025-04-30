@@ -88,16 +88,24 @@ go:	mov	ax,cs
 	| 从0x9000:0->0x9000:0x400地址空间就是栈空间
 	mov	sp,#0x400		| arbitrary value >>512
 
+    | 通过BIOS中断拿到光标位置
     | AH设置int 0x10功能号 读取光标位置 位置行列都是0-based 行号返回到DH 列号返回到DL
     | 这个地方读取光标坐标的用途是下面要输出字符串 输出字符串的光标就是现在获取到的
 	mov	ah,#0x03	| read cursor pos
 	| BH是int 0x10的参数 指定显示页 0表示使用默认的显示页
 	xor	bh,bh
 	int	0x10
-	
+
+	| 通过BIOS中断打印字符串
+	| 要显示的字符串长度24
 	mov	cx,#24
+	| BH指定页码
+	| BL指定属性
 	mov	bx,#0x0007	| page 0, attribute 7 (normal)
+	| 要显示的字符串地址 ES:BP 现在es已经是0x9000了 只要指定段内偏移量就行了
 	mov	bp,#msg1
+	| AH功能号0x13
+	| AL显示方式0x01
 	mov	ax,#0x1301	| write string, move cursor
 	int	0x10
 
