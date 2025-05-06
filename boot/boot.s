@@ -112,9 +112,10 @@ go:	mov	ax,cs
 
 | ok, we've written the message, now
 | we want to load the system (at 0x10000)
-
+    | es段寄存器=0x1000 下面会把磁盘中除了第一个扇区之外的其他扇区的代码加载到0x10000地方
 	mov	ax,#SYSSEG
 	mov	es,ax		| segment of 0x010000
+	| 读盘把内核代码临时放在0x1000:0x00上
 	call	read_it
 	call	kill_motor
 
@@ -128,6 +129,7 @@ go:	mov	ax,cs
 		
 | now we want to move to protected mode ...
 
+    | 禁用掉CPU的中断响应
 	cli			| no interrupts allowed !
 
 | first we move the system to it's rightful place
@@ -135,6 +137,7 @@ go:	mov	ax,cs
 	mov	ax,#0x0000
 	cld			| 'direction'=0, movs moves forward
 do_move:
+    | es=0x1000
 	mov	es,ax		| destination segment
 	add	ax,#0x1000
 	cmp	ax,#0x9000
@@ -235,13 +238,14 @@ empty_8042:
 | just change the "sectors" variable at the start of the file
 | (originally 18, for a 1.44Mb drive)
 |
-| 启动盘第一个扇区内容就是当前代码 是由BIOS负责加载到内存的 也就是说当前程序执行的时候已经意味着有一个扇区内容加载完成了
+| 启动盘第一个扇区内容就是当前代码 是由BIOS负责加载到内存的 也就是说当前程序执行的时候已经意味着有一个扇区内容加载完成了 1-based
 sread:	.word 1			| sectors read of current track
 head:	.word 0			| current head
+| 读盘时的柱面
 track:	.word 0			| current track
 
-| 函数read_it
-| 入参 ES
+| 函数read_it 把磁盘里面的内核程序代码读到了内存 临时放在0x1000:0x00的地方
+| 入参 ES ES:BX是BIOS中断程序读盘后将内容放到的缓冲区地址
 read_it:
 	mov ax,es
 	| 参数校验 ES是入参0x1000 这行代码是保证地址4KB对齐 如果地址没有对齐就会陷入死循环
@@ -253,11 +257,12 @@ die:	jne die			| es must be at 64kB boundary
     | 因为此时还在16位实模式下 也就是段空间最大就是(0xFFFF-0+1)个Byte 64KB
     | 所以要保证加载的代码不要撑爆段空间
     | 怎么判断呢 扇区代码量+0看看会不会进位
+    | 并且BIOS中断程序把磁盘内容放到内存后会通过ES:BX告诉我们缓冲区地址
 	xor bx,bx		| bx is starting address within segment
 rp_read:
 	mov ax,es
 	cmp ax,#ENDSEG		| have we loaded all yet?
-	| jb指令 cmp比较ax<#ENDSEG就执行jb跳转
+	| jb指令 cmp比较ax<#ENDSEG就执行jb跳转 也就是需要进行读盘
 	jb ok1_read
 	ret
 ok1_read:
@@ -265,26 +270,32 @@ ok1_read:
 	mov ax,#sectors
 	| AX中保存了要读多少个扇区
 	sub ax,sread
+	| CX=要读多少个扇区
 	mov cx,ax
-	| 每个扇区512Byte 计算出还要加载多少字节
+	| 每个扇区512Byte CX=计算出还要加载多少字节
 	shl cx,#9
-	| 上面已经提前把bx置0了 这个地方相加 通过看CF位判断出是不是溢出进位了
+	| 上面已经提前把bx置0了 这个地方相加 通过看CF位判断出是不是溢出进位了 并没有真正改变两个寄存器的值
 	add cx,bx
-	| 没有产生进位
+	| CF=0 没有产生进位
 	jnc ok2_read
-	|
+	| ZF=1执行跳转
 	je ok2_read
 	xor ax,ax
 	sub ax,bx
 	shr ax,#9
 | 发起真正的读盘 把代码加载到内存
 | 入参 AX=要读多少个扇区
+|     BX=ES:BX=缓冲区地址
 |     CX=要读多少Byte内容
 ok2_read:
 	call read_track
+	| 发起中断调用读盘后 AX寄存器中依然保存着中断调用的入参=要读多少个扇区
 	mov cx,ax
+	| sread是已经读完的最后一个扇区号 1-based 也就是已经读了多少个扇区
 	add ax,sread
+	| 已经读了的扇区数量+这次读的扇区数 vs 总扇区数 看一下ZF寄存器就知道磁盘有没有读完 两个值相等ZF被设置成1
 	cmp ax,#sectors
+	| 上面中断调用读盘没有读完 继续磁
 	jne ok3_read
 	mov ax,#1
 	sub ax,head
@@ -304,24 +315,31 @@ ok3_read:
 	xor bx,bx
 	jmp rp_read
 
-| 发起真正的读盘行为
-| 入参 AX=要从磁盘读多少个扇区
+| 定义一个函数 发起真正的读盘行为
+| 入参 AX=要从磁盘读多少个扇区read_track
+|     BX=ES:BX=缓冲区地址
 |     CX=要从磁盘读多少Byte内容
 read_track:
 	push ax
 	push bx
 	push cx
 	push dx
+	| ch=track的低8位=柱面号
 	mov dx,track
 	mov cx,sread
+	| CL=要读的扇区号
 	inc cx
 	mov ch,dl
+	| dh=head的低8位=磁头号
 	mov dx,head
 	mov dh,dl
+	| dl=驱动器号=0表示软盘
 	mov dl,#0
 	and dx,#0x0100
 	mov ah,#2
+	| 13号中断调用功能号AH=0x02
 	int 0x13
+	| 出参 CF=0表示成功 CF不等于0说明异常
 	jc bad_rt
 	pop dx
 	pop cx
