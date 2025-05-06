@@ -136,12 +136,24 @@ go:	mov	ax,cs
 
 	mov	ax,#0x0000
 	cld			| 'direction'=0, movs moves forward
+| 代码已经暂存在DS:BX=0x10000上
+| 现在开始把这片内核代码搬到0x00上 为构建内核空间做准备
+| 但是现在不清楚内核代码到底有多大 预留给内核代码的暂存空间是[0x10000...0x8FFFF] 所以不用管到底有多少代码 直接把整片空间都搬一次就行
+| 从0x10000到0x90000总共有8个段 每个段空间=0xFFFF=64KB
+| 所以下面这段代码搬代码的时候分8次 每次搬1个段 每个段64KB
+| 搬运的过程本质就是将[0x10000...0x8FFFF]这个空间分8次下移0x10000到[0x00...0x7FFFF]上
+| 至此 原来的BIOS构建的空间已经被摧毁 准备开始构建属于内核的空间
 do_move:
-    | es=0x1000
+    | ES=AX=这次1段搬到哪儿
 	mov	es,ax		| destination segment
+	| 搬完1段之后更新 下一次就知道搬到新的地址是哪儿
 	add	ax,#0x1000
+	| 目标段增加到0x9000时说明[0x10000...0x8FFFF]都已经搬完了 结束搬运代码的流程
 	cmp	ax,#0x9000
 	jz	end_move
+	| DS:SI->ES:DI 复制 每次复制2个字节
+	| CX=要复制多少次=0x8000个word=0x8000*2个Byte=64KB
+	| 每复制完一次SI跟DI会自动自增2=2个Byte
 	mov	ds,ax		| source segment
 	sub	di,di
 	sub	si,si
