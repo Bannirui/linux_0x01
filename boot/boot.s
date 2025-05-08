@@ -165,10 +165,15 @@ do_move:
 | then we load the segment descriptors
 
 end_move:
-
+    | DS=CS=0x9000
+    | 内核代码已经全部搬到0x0的低地址空间上了 下面准备切换CPU从实模式到保护模式 在切到保护模式之前先做准备工作 构建中断描述符表和全局描述符表
 	mov	ax,cs		| right, forgot this at first. didn't work :-)
 	mov	ds,ax
+	| 把idt_48处的6字节内容加载到IDTR中断描述符表寄存器 之后CPU就知道中断向量表存在哪儿 有多大了
+	| 此刻的idt中断描述符表是空的 也就是变相的临时禁用了中断服务
 	lidt	idt_48		| load idt with 0,0
+	| 进入保护模式的前提 lgdt指令把gdt_48处的6Byte内容加载到GDTR寄存器 之后CPU就知道全局描述符表在哪儿 有多大
+	| 用于进入x86保护模式的关键汇编指令
 	lgdt	gdt_48		| load gdt with whatever appropriate
 
 | that was painless, now we enable A20
@@ -379,26 +384,33 @@ kill_motor:
 	outb
 	pop dx
 	ret
-
+| GDT表 里面每个表项是8Byte 每个表项是个段信息
 gdt:
+    | 段1 是空段
 	.word	0,0,0,0		| dummy
 
+    | 段2 代码段
 	.word	0x07FF		| 8Mb - limit=2047 (2048*4096=8Mb)
 	.word	0x0000		| base address=0
 	.word	0x9A00		| code read/exec
 	.word	0x00C0		| granularity=4096, 386
 
+    | 段3 数据段
 	.word	0x07FF		| 8Mb - limit=2047 (2048*4096=8Mb)
 	.word	0x0000		| base address=0
 	.word	0x9200		| data read/write
 	.word	0x00C0		| granularity=4096, 386
-
+| 中断描述符表 此时中断描述表是空的
 idt_48:
+    | 2Byte IDT表的大小=0Byte
 	.word	0			| idt limit=0
+	| 4Byte IDT表的基地址 也就是说IDT表在0x0000上
 	.word	0,0			| idt base=0L
-
+| GDT表 全局描述符表
 gdt_48:
+    | 2Byte GDT表的大小 也就是说GDT的大小=0x800Byte=2048Byte GDT表每个表项是8Byte 那么GDT表最多只有(2048/8)=256个段
 	.word	0x800		| gdt limit=2048, 256 GDT entries
+	| 4Byte GDT的线性地址 小端顺 4字节的DGT表地址是0x0009????
 	.word	gdt,0x9		| gdt base = 0X9xxxx
 	
 msg1:
