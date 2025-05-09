@@ -231,6 +231,7 @@ end_move:
 | we let the gnu-compiled 32-bit programs do that. We just jump to
 | absolute address 0x00000, in 32-bit protected mode.
 
+    | lmsw指令只能修改cr0寄存器的低16位 cr0寄存器的第0位叫PE位 lmsw指令只能将PE从0改成1 不能从1改成0
 	mov	ax,#0x0001	| protected mode (PE) bit
 	lmsw	ax		| This is it!
 	jmpi	0,8		| jmp offset 0 of segment 8 (cs)
