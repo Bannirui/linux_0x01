@@ -18,6 +18,7 @@ void usage(void)
 	die("Usage: build boot system [> image]");
 }
 
+// tools/build boot/boot tools/system > Image
 int main(int argc, char ** argv)
 {
 	int i,c,id;
@@ -26,6 +27,7 @@ int main(int argc, char ** argv)
 	if (argc != 3)
 		usage();
 	for (i=0;i<sizeof buf; i++) buf[i]=0;
+	// boot模块写到1号扇区
 	if ((id=open(argv[1],O_RDONLY,0))<0)
 		die("Unable to open 'boot'");
 	if (read(id,buf,MINIX_HEADER) != MINIX_HEADER)
@@ -46,13 +48,14 @@ int main(int argc, char ** argv)
 	fprintf(stderr,"Boot sector %d bytes.\n",i);
 	if (i>510)
 		die("Boot block may not exceed 510 bytes");
+	// 启动扇区1号扇区标识0x55aa
 	buf[510]=0x55;
 	buf[511]=0xAA;
 	i=write(1,buf,512);
 	if (i!=512)
 		die("Write call failed");
 	close (id);
-	
+	// system模块从2号扇区写
 	if ((id=open(argv[2],O_RDONLY,0))<0)
 		die("Unable to open 'system'");
 	if (read(id,buf,GCC_HEADER) != GCC_HEADER)

@@ -29,10 +29,12 @@ LIBS	=lib/lib.a
 
 all:	Image
 
+# 把boot模块写到镜像1号扇区 system模块从2号扇区开始写
 Image: boot/boot tools/system tools/build
 	tools/build boot/boot tools/system > Image
 	sync
 
+# 用来制作镜像的工具
 tools/build: tools/build.c
 	$(CC) $(CFLAGS) \
 	-o tools/build tools/build.c
@@ -40,6 +42,7 @@ tools/build: tools/build.c
 
 boot/head.o: boot/head.s
 
+# system模块就是内核模块 包括head+其他代码
 tools/system:	boot/head.o init/main.o \
 		$(ARCHIVES) $(LIBS)
 	$(LD) $(LDFLAGS) boot/head.o init/main.o \
@@ -59,6 +62,7 @@ fs/fs.o:
 lib/lib.a:
 	(cd lib; make)
 
+# boot模块 做cpu的模式切换和内存布局
 boot/boot:	boot/boot.s tools/system
 	(echo -n "SYSSIZE = (";ls -l tools/system | grep system \
 		| cut -c25-31 | tr '\012' ' '; echo "+ 15 ) / 16") > tmp.s
