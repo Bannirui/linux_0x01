@@ -182,6 +182,7 @@ end_move:
 	mov	al,#0xD1		| command write
 	out	#0x64,al
 	call	empty_8042
+	| 打开A20 让CPU可以突破20位地址线的寻址
 	mov	al,#0xDF		| A20 on
 	out	#0x60,al
 	call	empty_8042
@@ -232,8 +233,12 @@ end_move:
 | absolute address 0x00000, in 32-bit protected mode.
 
     | lmsw指令只能修改cr0寄存器的低16位 cr0寄存器的第0位叫PE位 lmsw指令只能将PE从0改成1 不能从1改成0
+    | 通过lmsw指令对cr0寄存器PE位使能切换到保护模式
 	mov	ax,#0x0001	| protected mode (PE) bit
 	lmsw	ax		| This is it!
+	| 此时cpu已经是32保护模式了 jmpi跟的0是段内逻辑偏移地址 8是CS 而此时CS中值的语义是段选择子 0x8的高14位是0x1 也就是说是到GDT中找到1号段描述符 它的段基址是0
+	| 要跳到的物理地址=段基址+逻辑偏移=0+0=0
+	| 也就要跳到0地址是 此时0地址上放着磁盘2号扇区及2号扇区之后的内容 也就是内核代码
 	jmpi	0,8		| jmp offset 0 of segment 8 (cs)
 
 | This routine checks that the keyboard command queue is empty
@@ -386,6 +391,7 @@ kill_motor:
 	pop dx
 	ret
 | GDT表 里面每个表项是8Byte 每个表项是个段信息
+| 第2段代码段和第3段数据段的段基址都是0 那么物理地址=段基址+逻辑偏移地址=0+逻辑偏移地址=逻辑偏移地址
 gdt:
     | 段1 是空段
 	.word	0,0,0,0		| dummy
