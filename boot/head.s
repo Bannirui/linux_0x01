@@ -9,6 +9,7 @@
 .globl _idt,_gdt,_pg_dir
 _pg_dir:
 startup_32:
+	# 0x10=0B 0002 0000 
 	movl $0x10,%eax
 	mov %ax,%ds
 	mov %ax,%es
