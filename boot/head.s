@@ -9,15 +9,22 @@
 .globl _idt,_gdt,_pg_dir
 _pg_dir:
 startup_32:
-	# 0x10=0B 0002 0000 
+	# 0x10=0B 0001 0000 低3位是000 高13位是0X10 也就是到GDT表检索脚标是2的段描述符 找到数据段
+	# 让ds es fs gs这几个寄存器的段选择子指向数据段描述符
 	movl $0x10,%eax
 	mov %ax,%ds
 	mov %ax,%es
 	mov %ax,%fs
 	mov %ax,%gs
+	# lss指令让ss:esp这个指针指向_stack_start标号位置
 	lss _stack_start,%esp
+	# 设置中断描述符表
 	call setup_idt
+	# 设置全局描述符表
 	call setup_gdt
+	# 那么为什么要重建idt表和gdt表呢 因为系统代码已经被搬到了0地址上 而此时cpu寄存器的idtr和gdtr都还指向在0x90200高地址上
+	# 所以这个地方重建的目的就是为了让idt表和gdt表都搬到0低地址空间上
+	# 下面又重新设置段寄存器的段选择子是什么意思 因为上面修改了全局描述符表 所以这个地方要重新设置一遍刷新后才能生效
 	movl $0x10,%eax		# reload all the segment registers
 	mov %ax,%ds		# after changing gdt. CS was already
 	mov %ax,%es		# reloaded in 'setup_gdt'
@@ -48,6 +55,11 @@ startup_32:
  *  sure everything is ok. This routine will be over-
  *  written by the page tables.
  */
+/*
+ * 设置中断描述符表
+ * 中断描述符表总共有256个中断描述符 每个描述符中的中断程序例程都指向了ignore_int的函数地址
+ * ignore_int这个函数地址是默认的中断处理程序 后面会慢慢被具体的中断程序所覆盖
+ */
 setup_idt:
 	lea ignore_int,%edx
 	movl $0x00080000,%eax
@@ -75,6 +87,7 @@ rp_sidt:
  *  rather long comment is certainly needed :-).
  *  This routine will beoverwritten by the page tables.
  */
+/*重新设置全局描述符表*/
 setup_gdt:
 	lgdt gdt_descr
 	ret
@@ -163,14 +176,21 @@ idt_descr:
 .align 2
 .word 0
 gdt_descr:
+    # 全局描述符的结构6个byte 2个byte表示gdt大小 4个byte表示gdt的基址
 	.word 256*8-1		# so does gdt (not that that's any
 	.long _gdt		# magic number, but it works for me :^)
 
 	.align 3
 _idt:	.fill 256,8,0		# idt is uninitialized
 
+# gdt表有256个表项 每个表项8Byte 存放的是描述符 2个空的 1个数据段 1个代码段 252个预留
+# 0号 空的
 _gdt:	.quad 0x0000000000000000	/* NULL descriptor */
+	# 1号 代码段
 	.quad 0x00c09a00000007ff	/* 8Mb */
+    # 2号 数据段
 	.quad 0x00c09200000007ff	/* 8Mb */
+	# 3号 空的
 	.quad 0x0000000000000000	/* TEMPORARY - don't use */
+	# 252个预留的
 	.fill 252,8,0			/* space for LDT's and TSS's etc */
